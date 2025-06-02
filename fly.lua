@@ -1,7 +1,56 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
+
+-- GUI для мобильного управления
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FlightControls"
+screenGui.Parent = player.PlayerGui
+
+-- Кнопка включения/выключения полета
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleFlight"
+toggleButton.Size = UDim2.new(0.15, 0, 0.1, 0)
+toggleButton.Position = UDim2.new(0.8, 0, 0.7, 0)
+toggleButton.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+toggleButton.Text = "✈️ Вкл/Выкл"
+toggleButton.TextScaled = true
+toggleButton.Parent = screenGui
+
+-- Панель управления движением
+local controlFrame = Instance.new("Frame")
+controlFrame.Name = "FlightPad"
+controlFrame.Size = UDim2.new(0.3, 0, 0.3, 0)
+controlFrame.Position = UDim2.new(0.1, 0, 0.5, 0)
+controlFrame.BackgroundTransparency = 0.7
+controlFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+controlFrame.Visible = false
+controlFrame.Parent = screenGui
+
+-- Зоны управления
+local directions = {
+    {Name = "Up", Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 0.3, 0)},
+    {Name = "Down", Position = UDim2.new(0.5, 0, 0.7, 0), Size = UDim2.new(0.3, 0, 0.3, 0)},
+    {Name = "Left", Position = UDim2.new(0, 0, 0.35, 0), Size = UDim2.new(0.3, 0, 0.3, 0)},
+    {Name = "Right", Position = UDim2.new(0.7, 0, 0.35, 0), Size = UDim2.new(0.3, 0, 0.3, 0)},
+    {Name = "Forward", Position = UDim2.new(0.35, 0, 0.35, 0), Size = UDim2.new(0.3, 0, 0.3, 0)}
+}
+
+local touchControls = {}
+for _, dir in ipairs(directions) do
+    local button = Instance.new("TextButton")
+    button.Name = dir.Name
+    button.Size = dir.Size
+    button.Position = dir.Position
+    button.BackgroundTransparency = 0.5
+    button.BackgroundColor3 = Color3.new(0.3, 0.7, 1)
+    button.Text = dir.Name
+    button.TextScaled = true
+    button.Parent = controlFrame
+    touchControls[dir.Name] = false
+end
 
 -- Функция для убийства персонажа
 local function killCharacter()
@@ -18,7 +67,10 @@ local function enableFlight()
     
     if not humanoid or not rootPart then return end
     
-    -- Создаем физические компоненты для полета
+    -- Показываем элементы управления
+    controlFrame.Visible = true
+    
+    -- Создаем физические компоненты
     local bodyGyro = Instance.new("BodyGyro")
     local bodyVelocity = Instance.new("BodyVelocity")
     
@@ -33,40 +85,58 @@ local function enableFlight()
     bodyVelocity.Parent = rootPart
     
     -- Настройки полета
-    local FLY_SPEED = 50
+    local FLY_SPEED = 25
     local flying = true
     
-    -- Управление полетом
-    UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Space then
-            flying = not flying
-            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    -- Обработка нажатий на кнопки
+    for name, button in pairs(controlFrame:GetChildren()) do
+        if button:IsA("TextButton") then
+            button.MouseButton1Down:Connect(function()
+                touchControls[name] = true
+            end)
+            
+            button.MouseButton1Up:Connect(function()
+                touchControls[name] = false
+            end)
+            
+            button.TouchTap:Connect(function()
+                touchControls[name] = not touchControls[name]
+            end)
         end
+    end
+    
+    -- Кнопка переключения режима
+    toggleButton.MouseButton1Click:Connect(function()
+        flying = not flying
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    end)
+    
+    toggleButton.TouchTap:Connect(function()
+        flying = not flying
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
     end)
     
     -- Обновление движения
-    game:GetService("RunService").Heartbeat:Connect(function()
+    RunService.Heartbeat:Connect(function()
         if not flying then return end
         
         local direction = Vector3.new()
+        local camera = workspace.CurrentCamera
         
         -- Определение направления движения
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-            direction = direction + rootPart.CFrame.LookVector
+        if touchControls["Forward"] then
+            direction = direction + camera.CFrame.LookVector
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-            direction = direction - rootPart.CFrame.LookVector
+        if touchControls["Left"] then
+            direction = direction - camera.CFrame.RightVector
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-            direction = direction + rootPart.CFrame.RightVector
+        if touchControls["Right"] then
+            direction = direction + camera.CFrame.RightVector
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-            direction = direction - rootPart.CFrame.RightVector
-        end
-        if UserInputService:IsKeyDown(Enum.KeyCode.E) then
+        if touchControls["Up"] then
             direction = direction + Vector3.new(0, 1, 0)
         end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+        if touchControls["Down"] then
             direction = direction + Vector3.new(0, -1, 0)
         end
         
@@ -76,7 +146,7 @@ local function enableFlight()
         end
         
         bodyVelocity.Velocity = direction
-        bodyGyro.CFrame = rootPart.CFrame
+        bodyGyro.CFrame = camera.CFrame
     end)
     
     -- Визуальные эффекты
@@ -94,13 +164,20 @@ local function enableFlight()
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 end
 
--- Основная логика скрипта
+-- Основная логика
 killCharacter() -- Убиваем текущего персонажа
 
--- Ожидаем возрождения
+-- Обработка возрождения
 player.CharacterAdded:Connect(function(newChar)
     character = newChar
     character:WaitForChild("Humanoid")
-    wait(1) -- Даем время на появление персонажа
+    wait(1) -- Даем время на появление
     enableFlight() -- Активируем полет
+end)
+
+-- Автоматическая очистка при выходе
+player.CharacterRemoving:Connect(function()
+    if screenGui then
+        screenGui:Destroy()
+    end
 end)
